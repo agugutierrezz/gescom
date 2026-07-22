@@ -24,12 +24,13 @@ Verificar antes del push que `git status` NO liste `backend/.env` (está en `.gi
 
 1. Crear cuenta en [neon.tech](https://neon.tech) (plan Free) y un proyecto `gescom` (región AWS São Paulo, la más cercana).
 2. Copiar la **connection string** (botón "Connect", formato `postgresql://...@...neon.tech/neondb?sslmode=require`).
-3. Crear el usuario ADMIN desde tu PC (las migraciones corren solas en cada deploy de Render):
+3. Crear el esquema y el usuario ADMIN desde tu PC:
 
 ```powershell
 cd C:\Users\Agus\Desktop\gescom\backend
 .\.venv\Scripts\Activate.ps1
 $env:DATABASE_URL = "postgresql://...connection string de Neon..."
+alembic upgrade head              # crea las tablas (primera vez; luego corre solo en cada deploy)
 python -m scripts.crear_usuario   # crear el usuario ADMIN
 ```
 
