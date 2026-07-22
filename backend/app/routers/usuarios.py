@@ -1,9 +1,11 @@
 """Gestión de cuentas de usuario, exclusiva del administrador (RF-18).
 
-El admin crea, renombra y activa/desactiva cuentas OPERADOR. No se eliminan
-cuentas (conservan sus reservas y movimientos) y las contraseñas las resetea
-cada usuario desde /recuperar.
+El admin crea, renombra, activa/desactiva cuentas OPERADOR y les cambia la
+contraseña. No se eliminan cuentas (conservan sus reservas y movimientos).
+La contraseña del ADMIN se cambia por consola (python -m scripts.cambiar_password).
 """
+
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -19,6 +21,7 @@ from app.schemas.usuario import (
     UsuarioAdminOut,
     UsuarioCreate,
     UsuarioEstado,
+    UsuarioPassword,
     UsuarioRename,
 )
 
@@ -111,6 +114,27 @@ def renombrar_usuario(
     nombre = payload.nombre.strip()
     _validar_nombre_libre(db, nombre, excluir_id=usuario.id)
     usuario.nombre = nombre
+    db.commit()
+    db.refresh(usuario)
+    return _a_out(usuario)
+
+
+@router.patch("/{usuario_id}/password", response_model=UsuarioAdminOut)
+def cambiar_password_usuario(
+    usuario_id: int,
+    payload: UsuarioPassword,
+    admin: Usuario = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Cambia la contraseña de una cuenta OPERADOR (o la propia del admin)."""
+    usuario = _get_usuario(db, usuario_id)
+    if usuario.rol == RolUsuario.ADMIN and usuario.id != admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="La contraseña de otro administrador no puede cambiarse desde aquí",
+        )
+    usuario.hashed_password = hash_password(payload.password)
+    usuario.password_changed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
     db.refresh(usuario)
     return _a_out(usuario)

@@ -26,3 +26,8 @@ export function renombrarUsuario(id, nombre) {
 export function cambiarEstadoUsuario(id, activo) {
   return api.patch(`/usuarios/${id}/estado`, { activo });
 }
+
+/** Cambia la contraseña de una cuenta (solo ADMIN). */
+export function cambiarPasswordUsuario(id, password) {
+  return api.patch(`/usuarios/${id}/password`, { password });
+}

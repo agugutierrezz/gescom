@@ -104,3 +104,51 @@ def test_contadores_de_actividad(client, admin_headers, operador):
     )
     assert fila["cant_departamentos"] == 1
     assert fila["cant_reservas"] == 1
+
+
+def test_admin_cambia_password_de_operador(client, admin_headers, operador):
+    r = client.patch(
+        f"/usuarios/{operador.id}/password",
+        json={"password": "nuevaclave123"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["password_changed_at"] is not None
+    # la vieja ya no sirve, la nueva sí
+    assert client.post(
+        "/auth/login", json={"nombre": "operador1", "password": PASSWORD_TESTS}
+    ).status_code == 401
+    assert client.post(
+        "/auth/login", json={"nombre": "operador1", "password": "nuevaclave123"}
+    ).status_code == 200
+
+
+def test_admin_cambia_su_propia_password(client, admin, admin_headers):
+    r = client.patch(
+        f"/usuarios/{admin.id}/password", json={"password": "otraclave123"}, headers=admin_headers
+    )
+    assert r.status_code == 200
+    assert client.post(
+        "/auth/login", json={"nombre": "admin", "password": "otraclave123"}
+    ).status_code == 200
+
+
+def test_operador_no_puede_cambiar_passwords(client, operador, op_headers):
+    r = client.patch(
+        f"/usuarios/{operador.id}/password", json={"password": "nuevaclave123"}, headers=op_headers
+    )
+    assert r.status_code == 403
+
+
+def test_cambiar_password_corta_422(client, admin_headers, operador):
+    r = client.patch(
+        f"/usuarios/{operador.id}/password", json={"password": "corta"}, headers=admin_headers
+    )
+    assert r.status_code == 422
+
+
+def test_cambiar_password_usuario_inexistente_404(client, admin_headers):
+    r = client.patch(
+        "/usuarios/9999/password", json={"password": "nuevaclave123"}, headers=admin_headers
+    )
+    assert r.status_code == 404

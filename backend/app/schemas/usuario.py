@@ -41,6 +41,10 @@ class UsuarioEstado(BaseModel):
     activo: bool
 
 
+class UsuarioPassword(BaseModel):
+    password: str = Field(min_length=8, description="Nueva contraseña (mínimo 8 caracteres)")
+
+
 class UsuarioAdminOut(UsuarioOut):
     """Fila del panel de usuarios, con datos de actividad de la cuenta.
 

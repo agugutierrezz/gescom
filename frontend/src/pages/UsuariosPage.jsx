@@ -1,11 +1,109 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { cambiarEstadoUsuario, crearUsuario, getUsuarios, renombrarUsuario } from '../api/usuarios';
+import {
+  cambiarEstadoUsuario,
+  cambiarPasswordUsuario,
+  crearUsuario,
+  getUsuarios,
+  renombrarUsuario,
+} from '../api/usuarios';
 import { useAuth } from '../context/AuthContext';
 import { useFeedback } from '../context/FeedbackContext';
 
 function formatFecha(isoFecha) {
   const fecha = new Date(isoFecha);
   return fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function PasswordModal({ usuario, onClose, onGuardado }) {
+  const { toast } = useFeedback();
+  const [guardando, setGuardando] = useState(false);
+  const [form, setForm] = useState({ password: '', confirmar: '' });
+
+  const set = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
+
+  async function guardar(e) {
+    e.preventDefault();
+    if (form.password !== form.confirmar) {
+      toast('Las contraseñas no coinciden.', 'error');
+      return;
+    }
+    setGuardando(true);
+    try {
+      await cambiarPasswordUsuario(usuario.id, form.password);
+      toast(`Contraseña de "${usuario.nombre}" actualizada.`);
+      onGuardado();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-inverse-surface/40 backdrop-blur-sm px-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="bg-surface-container-lowest rounded-xl shadow-warm w-full max-w-md p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-5">
+          <h3 className="text-h3 text-on-surface">Cambiar contraseña de "{usuario.nombre}"</h3>
+          <button type="button" onClick={onClose} className="text-outline hover:text-on-surface" aria-label="Cerrar">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <form onSubmit={guardar} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1">
+            <span className="text-label-sm text-on-surface-variant">Nueva contraseña</span>
+            <input
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={form.password}
+              onChange={set('password')}
+              className="h-11 px-3 rounded-lg border border-outline-variant bg-surface-bright focus:border-primary outline-none"
+            />
+            <span className="text-caption text-on-surface-variant">Mínimo 8 caracteres.</span>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-label-sm text-on-surface-variant">Confirmar contraseña</span>
+            <input
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={form.confirmar}
+              onChange={set('confirmar')}
+              className="h-11 px-3 rounded-lg border border-outline-variant bg-surface-bright focus:border-primary outline-none"
+            />
+          </label>
+
+          <div className="flex justify-end gap-3 mt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-[40px] px-4 rounded-lg border border-outline-variant text-on-surface text-body-semibold hover:bg-surface-variant/40 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={guardando}
+              className="h-[40px] px-5 rounded-lg bg-primary text-on-primary text-body-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+            >
+              {guardando ? 'Guardando…' : 'Cambiar contraseña'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 function UsuarioModal({ usuario, onClose, onGuardado }) {
@@ -73,14 +171,10 @@ function UsuarioModal({ usuario, onClose, onGuardado }) {
               maxLength={100}
               pattern="[a-zA-Z0-9_.\-]+"
               title="Letras, números, punto, guion y guion bajo (sin espacios)"
-              placeholder="Ej: puntapiedras"
               value={form.nombre}
               onChange={set('nombre')}
               className="h-11 px-3 rounded-lg border border-outline-variant bg-surface-bright focus:border-primary outline-none"
             />
-            <span className="text-caption text-on-surface-variant">
-              Es el usuario con el que el complejo inicia sesión.
-            </span>
           </label>
 
           {!esEdicion && (
@@ -141,6 +235,7 @@ export default function UsuariosPage() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [modal, setModal] = useState(null); // null | { usuario: null } | { usuario }
+  const [passwordModal, setPasswordModal] = useState(null); // null | usuario
 
   const cargar = useCallback(() => {
     setCargando(true);
@@ -189,12 +284,9 @@ export default function UsuariosPage() {
   return (
     <>
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-gutter gap-4">
-        <div>
-          <h1 className="text-h1 text-on-surface">Gestión de Usuarios</h1>
-          <p className="text-body-base text-on-surface-variant mt-1">
-            Cuentas de acceso al sistema: {activos} activas de {usuarios.length} en total.
-          </p>
-        </div>
+        <p className="text-body-base text-on-surface-variant">
+          Cuentas de acceso al sistema: {activos} activas de {usuarios.length} en total.
+        </p>
         <button
           type="button"
           onClick={() => setModal({ usuario: null })}
@@ -316,6 +408,15 @@ export default function UsuariosPage() {
                           >
                             <span className="material-symbols-outlined text-[20px]">edit</span>
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setPasswordModal(u)}
+                            className="p-1 text-outline hover:text-primary transition-colors"
+                            aria-label={`Cambiar contraseña de ${u.nombre}`}
+                            title="Cambiar contraseña"
+                          >
+                            <span className="material-symbols-outlined text-[20px]">key</span>
+                          </button>
                           {!esYo && (
                             <button
                               type="button"
@@ -341,10 +442,16 @@ export default function UsuariosPage() {
         </div>
       </div>
 
-      <p className="mt-4 text-caption text-on-surface-variant">
-        Las contraseñas las cambia cada usuario desde la pantalla "Olvidé mi contraseña" del login.
-        La cuenta de administrador solo se recupera por consola en el servidor.
-      </p>
+      {passwordModal && (
+        <PasswordModal
+          usuario={passwordModal}
+          onClose={() => setPasswordModal(null)}
+          onGuardado={() => {
+            setPasswordModal(null);
+            cargar();
+          }}
+        />
+      )}
 
       {modal && (
         <UsuarioModal

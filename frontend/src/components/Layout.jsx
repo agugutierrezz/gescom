@@ -10,6 +10,7 @@ const TITLES = {
   '/departamentos': 'Departamentos',
   '/disponibilidad': 'Disponibilidad',
   '/finanzas': 'Finanzas',
+  '/usuarios': 'Gestión de Usuarios',
 };
 
 function resolveTitle(pathname) {
