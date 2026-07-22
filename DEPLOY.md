@@ -18,18 +18,18 @@ git push -u origin main
 ```
 
 Verificar antes del push que `git status` NO liste `backend/.env` (está en `.gitignore`).
+`backend/.env.example` sí se versiona: es la plantilla de variables, no contiene secretos reales.
 
 ## 2. Base de datos — Neon
 
 1. Crear cuenta en [neon.tech](https://neon.tech) (plan Free) y un proyecto `gescom` (región AWS São Paulo, la más cercana).
 2. Copiar la **connection string** (botón "Connect", formato `postgresql://...@...neon.tech/neondb?sslmode=require`).
-3. Aplicar las migraciones y crear el usuario desde tu PC:
+3. Crear el usuario ADMIN desde tu PC (las migraciones corren solas en cada deploy de Render):
 
 ```powershell
 cd C:\Users\Agus\Desktop\gescom\backend
 .\.venv\Scripts\Activate.ps1
 $env:DATABASE_URL = "postgresql://...connection string de Neon..."
-alembic upgrade head
 python -m scripts.crear_usuario   # crear el usuario ADMIN
 ```
 
@@ -59,6 +59,6 @@ python -m scripts.crear_usuario   # crear el usuario ADMIN
 ## Notas de operación
 
 - **Cold start**: el backend free de Render se duerme tras ~15 min sin tráfico; el primer request lo despierta (~1 min). Neon se despierta solo en ~1 s.
-- **Deploy continuo**: cada `git push` a `main` redeploya backend (Render) y frontend (Vercel) automáticamente.
+- **Deploy continuo**: cada `git push` a `main` redeploya backend (Render, incluyendo `alembic upgrade head`) y frontend (Vercel) automáticamente.
 - **Recuperar contraseña del ADMIN**: desde Render → servicio → Shell: `python -m scripts.cambiar_password` (o desde tu PC con `DATABASE_URL` de Neon).
 - **Backups**: el plan free de Neon tiene point-in-time restore de 24 h. Para respaldos propios: `pg_dump` con la connection string.
