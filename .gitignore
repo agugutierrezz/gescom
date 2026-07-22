@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Playwright
+playwright-report/
+test-results/
+
+# Alembic
+alembic/versions/*.pyc
+
+# Node
+node_modules/
+dist/
+.env.local
+*.timestamp-*.mjs
+
+# OS
+.DS_Store
+Thumbs.db

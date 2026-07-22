@@ -1,0 +1,9 @@
+# Terminal 1 — backend
+cd C:\Users\Agus\Desktop\gescom\backend
+.\.venv\Scripts\Activate.ps1 
+uvicorn app.main:app --reload
+deactivate
+
+# Terminal 2 — frontend
+cd C:\Users\Agus\Desktop\gescom\frontend
+npm run dev

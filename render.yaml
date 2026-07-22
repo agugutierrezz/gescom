@@ -1,0 +1,22 @@
+# Blueprint de Render: al conectar el repo, Render detecta este archivo y
+# crea el servicio del backend con esta configuración.
+services:
+  - type: web
+    name: gescom-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.4
+      - key: DATABASE_URL
+        sync: false # se carga a mano (connection string de Neon)
+      - key: SECRET_KEY
+        sync: false # se carga a mano (clave fuerte generada)
+      - key: CORS_ORIGINS
+        sync: false # URL del frontend en Vercel, ej. https://gescom.vercel.app
+      - key: DOCS_ENABLED
+        value: "false"
