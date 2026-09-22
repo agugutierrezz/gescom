@@ -53,3 +53,50 @@ def total_pagado_usd(reserva: Reserva) -> Decimal:
 
 def saldo_usd(reserva: Reserva) -> Decimal:
     return total_neto_usd(reserva) - total_pagado_usd(reserva)
+
+
+# --- Equivalentes en pesos -------------------------------------------------
+# Se calculan directo en ARS (sin pasar por USD) para que los movimientos en
+# pesos se muestren exactos: una seña de $ 750.000 da "Total pagado $ 750.000"
+# y no el resultado de convertir a USD y volver a pesos.
+
+
+def _en_ars(monto, moneda: Moneda, tipo_cambio) -> Decimal:
+    monto = Decimal(monto)
+    if moneda == Moneda.USD:
+        monto = monto * Decimal(tipo_cambio)
+    return monto
+
+
+def descuento_ars(reserva: Reserva) -> Decimal:
+    """Descuento de la reserva expresado en ARS."""
+    if reserva.descuento_tipo is None or reserva.descuento_valor is None:
+        return Decimal("0")
+    valor = Decimal(reserva.descuento_valor)
+    if reserva.descuento_tipo == DescuentoTipo.PORCENTAJE:
+        bruto = Decimal(reserva.monto_pesos) * valor / Decimal("100")
+    else:  # MONTO, en USD
+        bruto = valor * Decimal(reserva.tipo_cambio)
+    return bruto.quantize(DOS_DECIMALES, rounding=ROUND_HALF_UP)
+
+
+def total_neto_ars(reserva: Reserva) -> Decimal:
+    """Total a cobrar en ARS: monto - descuento + cargos."""
+    total = Decimal(reserva.monto_pesos) - descuento_ars(reserva)
+    for pago in reserva.pagos:
+        if pago.tipo == TipoPago.CARGO:
+            total += _en_ars(pago.monto_final, pago.moneda, reserva.tipo_cambio)
+    return total.quantize(DOS_DECIMALES, rounding=ROUND_HALF_UP)
+
+
+def total_pagado_ars(reserva: Reserva) -> Decimal:
+    """Suma de pagos (tipo PAGO) en ARS."""
+    total = Decimal("0")
+    for pago in reserva.pagos:
+        if pago.tipo == TipoPago.PAGO:
+            total += _en_ars(pago.monto_final, pago.moneda, reserva.tipo_cambio)
+    return total.quantize(DOS_DECIMALES, rounding=ROUND_HALF_UP)
+
+
+def saldo_ars(reserva: Reserva) -> Decimal:
+    return total_neto_ars(reserva) - total_pagado_ars(reserva)

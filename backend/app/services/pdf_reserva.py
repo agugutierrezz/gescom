@@ -8,10 +8,18 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
-from app.models.pago import TipoPago
+from app.models.pago import Moneda, TipoPago
 from app.models.reserva import DescuentoTipo, Reserva
 from app.services.branding import GESCOM_LOGO, branding_de, dibujar_logo
-from app.services.cuenta_corriente import descuento_usd, saldo_usd, total_neto_usd, total_pagado_usd
+from app.services.cuenta_corriente import (
+    EPS,
+    descuento_usd,
+    saldo_ars,
+    saldo_usd,
+    total_neto_usd,
+    total_pagado_ars,
+    total_pagado_usd,
+)
 
 PRIMARIO = colors.HexColor("#00526d")
 GRIS = colors.HexColor("#40484d")
@@ -142,11 +150,34 @@ def generar_pdf_reserva(reserva: Reserva) -> bytes:
             pdf.drawString(margen + 30 * mm, y, "Pago" if pago.tipo == TipoPago.PAGO else "Cargo")
             pdf.drawString(margen + 55 * mm, y, (pago.concepto or "-")[:35])
             pdf.drawString(margen + 110 * mm, y, (pago.medio_pago or "-")[:20])
-            moneda = "USD" if pago.moneda.value == "USD" else "$"
-            pdf.drawRightString(ancho - margen, y, f"{moneda} {Decimal(pago.monto_final):,.2f}")
+            monto_fmt = _fmt_usd(pago.monto_final) if pago.moneda == Moneda.USD else _fmt_ars(pago.monto_final)
+            pdf.drawRightString(ancho - margen, y, monto_fmt)
             y -= 16
 
-        # Totales de cuenta
+        # Totales de cuenta. Se expresan en la moneda de los movimientos:
+        # todos en pesos -> totales en pesos; todos en dólares -> en dólares;
+        # mezclados -> en dólares con el equivalente en pesos debajo.
+        # Las conversiones usan el tipo de cambio de la reserva.
+        monedas = {p.moneda for p in reserva.pagos}
+        solo_pesos = monedas == {Moneda.ARS}
+        mixto = len(monedas) > 1
+        saldada = saldo_usd(reserva) <= EPS
+        if solo_pesos:
+            pagado_txt = _fmt_ars(total_pagado_ars(reserva))
+            saldo_val = Decimal("0") if saldada else max(Decimal("0"), saldo_ars(reserva))
+            saldo_txt = _fmt_ars(saldo_val)
+        else:
+            pagado_txt = _fmt_usd(total_pagado_usd(reserva))
+            saldo_val = Decimal("0") if saldada else max(Decimal("0"), saldo_usd(reserva))
+            saldo_txt = _fmt_usd(saldo_val)
+
+        def equivalente_pesos(valor_ars: Decimal) -> None:
+            nonlocal y
+            y -= 11
+            pdf.setFont("Helvetica", 8)
+            pdf.setFillColor(GRIS_CLARO)
+            pdf.drawRightString(ancho - margen, y, f"equiv. {_fmt_ars(valor_ars)}")
+
         y -= 2
         pdf.setStrokeColor(LINEA)
         pdf.line(margen + 100 * mm, y + 6, ancho - margen, y + 6)
@@ -154,13 +185,16 @@ def generar_pdf_reserva(reserva: Reserva) -> bytes:
         pdf.setFont("Helvetica", 10)
         pdf.setFillColor(GRIS)
         pdf.drawRightString(ancho - margen - 45 * mm, y, "Total pagado:")
-        pdf.drawRightString(ancho - margen, y, _fmt_usd(total_pagado_usd(reserva)))
+        pdf.drawRightString(ancho - margen, y, pagado_txt)
+        if mixto:
+            equivalente_pesos(total_pagado_ars(reserva))
         y -= 16
-        saldo = max(Decimal("0"), saldo_usd(reserva))
         pdf.setFont("Helvetica-Bold", 10)
-        pdf.setFillColor(PRIMARIO if saldo > 0 else colors.HexColor("#00573d"))
+        pdf.setFillColor(PRIMARIO if saldo_val > 0 else colors.HexColor("#00573d"))
         pdf.drawRightString(ancho - margen - 45 * mm, y, "Saldo pendiente:")
-        pdf.drawRightString(ancho - margen, y, _fmt_usd(saldo))
+        pdf.drawRightString(ancho - margen, y, saldo_txt)
+        if mixto:
+            equivalente_pesos(Decimal("0") if saldada else max(Decimal("0"), saldo_ars(reserva)))
         y -= 16
 
     # Nota: las observaciones son internas del complejo y el comprobante se

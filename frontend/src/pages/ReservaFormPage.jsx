@@ -17,7 +17,11 @@ export default function ReservaFormPage() {
 
   const [departamentos, setDepartamentos] = useState([]);
   const [cotizacion, setCotizacion] = useState(null); // { venta, fecha_actualizacion }
-  const [tipoCambio, setTipoCambio] = useState(null); // valor usado para calcular
+  // Tipo de cambio aplicado a la reserva (editable): arranca con la cotización
+  // actual en el alta, o con el TC guardado al editar. El usuario puede poner el
+  // TC con el que realmente fijó el precio.
+  const [tcInput, setTcInput] = useState('');
+  const [tcOriginal, setTcOriginal] = useState(null); // TC guardado (solo al editar)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -68,8 +72,9 @@ export default function ReservaFormPage() {
             descuento_valor: reserva.descuento_valor ? String(reserva.descuento_valor) : '',
             observaciones: reserva.observaciones || '',
           });
-          // Al editar se conserva el tipo de cambio original de la reserva.
-          setTipoCambio(Number(reserva.tipo_cambio));
+          // Al editar se parte del tipo de cambio guardado en la reserva.
+          setTcInput(String(Number(reserva.tipo_cambio)));
+          setTcOriginal(Number(reserva.tipo_cambio));
           // El departamento de la reserva puede estar inactivo: lo sumamos igual al select.
           if (!deps.some((d) => d.id === reserva.id_departamento) && reserva.departamento_nombre) {
             setDepartamentos([
@@ -78,7 +83,7 @@ export default function ReservaFormPage() {
             ]);
           }
         } else if (cot) {
-          setTipoCambio(cot.venta);
+          setTcInput(String(cot.venta));
         }
       } catch (err) {
         if (!cancelado) setError(err.message || 'No se pudieron cargar los datos.');
@@ -91,6 +96,10 @@ export default function ReservaFormPage() {
       cancelado = true;
     };
   }, [id, editando]);
+
+  const tipoCambio = Number(tcInput) > 0 ? Number(tcInput) : null;
+  const tcDifiereDeCotizacion = Boolean(cotizacion && tipoCambio && Math.abs(tipoCambio - cotizacion.venta) >= 0.005);
+  const tcDifiereDeOriginal = Boolean(editando && tcOriginal && tipoCambio && Math.abs(tipoCambio - tcOriginal) >= 0.005);
 
   const montos = useMemo(() => {
     const monto = Number(form.monto);
@@ -117,6 +126,7 @@ export default function ReservaFormPage() {
       ['monto', 'Monto de reserva'],
       ['sena', 'Seña aplicada'],
       ['descuento_valor', 'Valor del descuento'],
+      ['tipo_cambio', 'Tipo de cambio'],
     ];
     for (const [idCampo, etiqueta] of camposNumericos) {
       const el = document.getElementById(idCampo);
@@ -138,7 +148,7 @@ export default function ReservaFormPage() {
     }
     if (!monto || monto <= 0) return setError('El monto de la reserva debe ser mayor a 0.');
     if (sena !== null && (Number.isNaN(sena) || sena < 0)) return setError('La seña no puede ser negativa.');
-    if (!tipoCambio) return setError('No hay tipo de cambio disponible. Recargá la página.');
+    if (!tipoCambio) return setError('Ingresá el tipo de cambio aplicado (mayor a 0).');
 
     const descValor = Number(form.descuento_valor);
     if (form.descuento_tipo) {
@@ -164,7 +174,7 @@ export default function ReservaFormPage() {
       fecha_egreso: form.fecha_egreso,
       monto,
       moneda: form.moneda,
-      tipo_cambio: tipoCambio,
+      tipo_cambio: Math.round(tipoCambio * 100) / 100,
       descuento_tipo: form.descuento_tipo || null,
       descuento_valor: form.descuento_tipo ? descValor : null,
       observaciones: form.observaciones.trim() || null,
@@ -293,7 +303,7 @@ export default function ReservaFormPage() {
               <div className="space-y-6">
                 <div>
                   <label className="block text-label-sm text-on-surface-variant uppercase tracking-wider mb-2" htmlFor="monto">
-                    Monto de reserva *
+                    Monto de Estadía *
                   </label>
                   <div className="flex">
                     <input
@@ -424,24 +434,71 @@ export default function ReservaFormPage() {
 
               <div className="bg-surface-container-low/50 p-4 rounded-xl border border-outline-variant/30 space-y-4 h-fit">
                 <div>
-                  <label className="block text-caption text-on-surface-variant mb-1">
-                    {editando ? 'Tipo de cambio de la reserva' : 'Tipo de cambio actual (oficial venta)'}
+                  <label className="block text-caption text-on-surface-variant mb-1" htmlFor="tipo_cambio">
+                    Tipo de cambio aplicado (ARS/USD) *
                   </label>
-                  <div className="text-body-semibold text-primary">
-                    {tipoCambio ? `$ ${fmtARS.format(tipoCambio)} ARS/USD` : 'No disponible'}
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-body-base text-on-surface-variant">$</span>
+                    <input
+                      id="tipo_cambio"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={tcInput}
+                      onChange={(e) => setTcInput(e.target.value)}
+                      placeholder="0.00"
+                      className={`${inputClass} pl-7 font-semibold text-primary`}
+                    />
                   </div>
-                  {!editando && cotizacion && (
-                    <p className="text-caption text-on-surface-variant mt-0.5">
-                      dolarapi.com —{' '}
-                      {new Date(cotizacion.fecha_actualizacion).toLocaleString('es-AR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}{' '}
-                      hs
-                    </p>
-                  )}
+                  <div className="mt-2 space-y-1 text-caption text-on-surface-variant">
+                    {cotizacion ? (
+                      <p className="flex flex-wrap items-center gap-x-2">
+                        <span>
+                          Cotización actual (oficial venta):{' '}
+                          <span className="font-semibold text-on-surface">$ {fmtARS.format(cotizacion.venta)}</span>
+                          {' · '}
+                          {new Date(cotizacion.fecha_actualizacion).toLocaleString('es-AR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}{' '}
+                          hs
+                        </span>
+                        {tcDifiereDeCotizacion && (
+                          <button
+                            type="button"
+                            onClick={() => setTcInput(String(cotizacion.venta))}
+                            className="text-primary font-semibold hover:underline"
+                          >
+                            Usar esta
+                          </button>
+                        )}
+                      </p>
+                    ) : (
+                      <p>No se pudo obtener la cotización actual. Ingresá el tipo de cambio manualmente.</p>
+                    )}
+                    {tcDifiereDeOriginal && (
+                      <p className="flex flex-wrap items-center gap-x-2">
+                        <span>
+                          TC guardado en la reserva:{' '}
+                          <span className="font-semibold text-on-surface">$ {fmtARS.format(tcOriginal)}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setTcInput(String(tcOriginal))}
+                          className="text-primary font-semibold hover:underline"
+                        >
+                          Restaurar
+                        </button>
+                      </p>
+                    )}
+                    {tcDifiereDeOriginal && (
+                      <p className="text-on-surface-variant">
+                        Cambiar el TC recalcula los equivalentes y el saldo de los pagos en pesos de esta reserva.
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
