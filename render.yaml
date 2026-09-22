@@ -21,3 +21,5 @@ services:
         sync: false # URL del frontend en Vercel, ej. https://gescom.vercel.app
       - key: DOCS_ENABLED
         value: "false"
+      - key: BRANDING_COMPLEJOS
+        sync: false # JSON con los datos y el logo (base64) del complejo; no está en el repo

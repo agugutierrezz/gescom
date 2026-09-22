@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     DATABASE_URL: str
     SECRET_KEY: str
@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     # Rate limit de login: máx. intentos fallidos por usuario dentro de la ventana.
     LOGIN_MAX_INTENTOS: int = 5
     LOGIN_VENTANA_MINUTOS: int = 15
+
+    # Branding de los complejos para el comprobante de reserva, en JSON.
+    # Se configura por entorno para que los datos del complejo no queden en
+    # el repo. Clave = nombre de usuario del complejo. Ver .env.example.
+    BRANDING_COMPLEJOS: str = ""
 
     @property
     def cors_origins_list(self) -> list[str]:

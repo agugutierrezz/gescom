@@ -30,3 +30,7 @@ DEPLOY.md
 TESTING.md
 DESIGN.md
 sesion-trabajo.txt
+
+# Logos de complejos (se configuran por entorno, no se suben)
+backend/app/assets/complejos/
+branding-render.txt
