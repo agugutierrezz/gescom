@@ -24,3 +24,9 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Documentación local (no se sube a GitHub)
+DEPLOY.md
+TESTING.md
+DESIGN.md
+sesion-trabajo.txt

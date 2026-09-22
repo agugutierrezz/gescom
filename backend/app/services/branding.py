@@ -16,13 +16,7 @@ GESCOM_LOGO = ASSETS / "gescom_logo.png"
 
 # Branding por nombre de usuario (el nombre actúa como username del complejo).
 COMPLEJOS: dict[str, dict] = {
-    "puntapiedras": {
-        "nombre": "Punta Piedras — Cabañas de mar",
-        "logo": ASSETS / "complejos" / "puntapiedras" / "logo.png",
-        "direccion": "Mar del Plata e/ 38 y 39",
-        "ciudad": "Mar Azul, Partido de Villa Gesell, Provincia de Buenos Aires",
-        "cp": "B7165",
-    },
+  # Llenar con datos del complejo
 }
 
 
