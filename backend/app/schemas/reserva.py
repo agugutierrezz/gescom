@@ -76,14 +76,26 @@ class PagoCreate(BaseModel):
 
 
 class CancelacionReserva(BaseModel):
-    """Body opcional de la cancelación: devolución de dinero al cliente.
+    """Body opcional de la cancelación: qué pasó con la plata de la reserva.
 
-    Si se indica un monto, se genera un movimiento EGRESO (categoría
-    "Devolución") con la fecha de hoy y el departamento de la reserva.
+    - Sin body (o todo en default): los pagos se retienen y siguen contando
+      como ingreso en Finanzas.
+    - devolucion_monto: se genera un movimiento EGRESO (categoría
+      "Devolución") con la fecha de hoy y el departamento de la reserva.
+    - anular_pagos: la reserva se cargó por error y la plata nunca entró; se
+      eliminan todos sus movimientos de cuenta (pagos y cargos), así no
+      aparecen en Finanzas.
     """
 
     devolucion_monto: Decimal | None = Field(default=None, gt=0)
     devolucion_moneda: Moneda = Moneda.ARS
+    anular_pagos: bool = False
+
+    @model_validator(mode="after")
+    def validar(self):
+        if self.anular_pagos and self.devolucion_monto is not None:
+            raise ValueError("No se puede registrar una devolución y anular los pagos a la vez")
+        return self
 
 
 class PagoOut(BaseModel):

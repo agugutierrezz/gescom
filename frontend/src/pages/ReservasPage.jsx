@@ -52,24 +52,45 @@ function hoyISO() {
 }
 
 /** Cancelación de reserva con devolución opcional (genera un EGRESO). */
+const DESTINOS_PAGOS = [
+  {
+    value: 'RETENER',
+    label: 'Me quedé con la plata',
+    ayuda: 'Los pagos siguen contando como ingreso en Finanzas.',
+  },
+  {
+    value: 'DEVOLVER',
+    label: 'Le devolví dinero al cliente',
+    ayuda: null, // se muestra el formulario de devolución
+  },
+  {
+    value: 'ANULAR',
+    label: 'Fue un error de carga (la plata no entró)',
+    ayuda: 'Se eliminan los pagos de esta reserva y dejan de figurar en Finanzas.',
+  },
+];
+
 function CancelarModal({ reserva, onClose, onConfirmar, procesando }) {
-  const [devolver, setDevolver] = useState(false);
+  const tienePagos = Number(reserva.total_pagado_usd) > 0;
+  const [destino, setDestino] = useState('RETENER');
   const [monto, setMonto] = useState('');
   const [moneda, setMoneda] = useState('ARS');
   const [error, setError] = useState('');
 
   function confirmar() {
     setError('');
-    let devolucion = null;
-    if (devolver) {
+    let body = null;
+    if (tienePagos && destino === 'DEVOLVER') {
       const valor = Number(monto);
       if (!valor || valor <= 0) {
         setError('Ingresá el monto que devolviste.');
         return;
       }
-      devolucion = { devolucion_monto: valor, devolucion_moneda: moneda };
+      body = { devolucion_monto: valor, devolucion_moneda: moneda };
+    } else if (tienePagos && destino === 'ANULAR') {
+      body = { anular_pagos: true };
     }
-    onConfirmar(devolucion);
+    onConfirmar(body);
   }
 
   const inputClass =
@@ -105,17 +126,40 @@ function CancelarModal({ reserva, onClose, onConfirmar, procesando }) {
           </div>
         )}
 
-        <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={devolver}
-            onChange={(e) => setDevolver(e.target.checked)}
-            className="w-4 h-4 accent-primary-container"
-          />
-          <span className="text-body-base text-on-surface">Le devolví dinero al cliente</span>
-        </label>
+        {tienePagos && (
+          <fieldset className="mb-4">
+            <legend className="text-body-semibold text-on-surface mb-2">
+              La reserva tiene pagos por USD {fmtUSD.format(Number(reserva.total_pagado_usd))}. ¿Qué pasó con esa plata?
+            </legend>
+            <div className="space-y-2">
+              {DESTINOS_PAGOS.map((opcion) => (
+                <label
+                  key={opcion.value}
+                  className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer select-none transition-colors ${
+                    destino === opcion.value ? 'border-primary bg-primary/5' : 'border-outline-variant/40'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="destino_pagos"
+                    value={opcion.value}
+                    checked={destino === opcion.value}
+                    onChange={() => setDestino(opcion.value)}
+                    className="mt-1 accent-primary-container"
+                  />
+                  <span>
+                    <span className="block text-body-base text-on-surface">{opcion.label}</span>
+                    {opcion.ayuda && (
+                      <span className="block text-caption text-on-surface-variant">{opcion.ayuda}</span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
 
-        {devolver && (
+        {tienePagos && destino === 'DEVOLVER' && (
           <div className="mb-4">
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1">
@@ -299,6 +343,8 @@ function PagoModal({ reserva: reservaInicial, onClose, onReservaChange }) {
   }
 
   const sinSaldo = Number(reserva.saldo_usd) <= 0.01;
+  // Reserva cancelada: solo se consultan y eliminan pagos mal cargados.
+  const cancelada = reserva.estado === 'CANCELADO';
   const inputClass =
     'w-full px-4 py-2 bg-transparent border border-[#C8A96E]/30 rounded-lg focus:border-primary-container focus:ring-0 text-body-base text-on-surface placeholder:text-outline-variant h-[48px]';
 
@@ -412,7 +458,23 @@ function PagoModal({ reserva: reservaInicial, onClose, onReservaChange }) {
         </div>
 
         {/* Formulario de registro */}
-        {sinSaldo ? (
+        {cancelada ? (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 bg-surface-container-low/60 text-on-surface-variant rounded-lg px-4 py-3 text-body-base">
+              <span className="material-symbols-outlined text-[20px]">info</span>
+              <span>
+                La reserva está cancelada: no se pueden registrar pagos. Si un pago se cargó por error (la plata
+                no entró), eliminalo para que deje de figurar como ingreso en Finanzas.
+              </span>
+            </div>
+            {error && (
+              <div className="flex items-center gap-2 bg-error-container/50 text-error rounded-lg px-4 py-2 text-body-base">
+                <span className="material-symbols-outlined text-[20px]">error</span>
+                {error}
+              </div>
+            )}
+          </div>
+        ) : sinSaldo ? (
           <div className="flex items-center gap-2 bg-tertiary/10 text-tertiary rounded-lg px-4 py-3 text-body-base">
             <span className="material-symbols-outlined text-[20px]">check_circle</span>
             La reserva no tiene saldo pendiente.
@@ -587,17 +649,19 @@ export default function ReservasPage() {
     setCancelModal(reserva);
   }
 
-  async function confirmarCancelacion(devolucion) {
+  async function confirmarCancelacion(body) {
     const reserva = cancelModal;
     setAccionandoId(reserva.id);
     setError('');
     try {
-      const actualizada = await cancelarReserva(reserva.id, devolucion);
+      const actualizada = await cancelarReserva(reserva.id, body);
       setReservas((prev) => prev.map((r) => (r.id === reserva.id ? actualizada : r)));
       toast(
-        devolucion
+        body?.devolucion_monto
           ? 'Reserva cancelada. La devolución quedó registrada como egreso en Finanzas.'
-          : 'Reserva cancelada.'
+          : body?.anular_pagos
+            ? 'Reserva cancelada. Sus pagos se eliminaron y ya no figuran en Finanzas.'
+            : 'Reserva cancelada.'
       );
       setCancelModal(null);
     } catch (err) {
@@ -800,9 +864,8 @@ export default function ReservasPage() {
                         <button
                           type="button"
                           onClick={() => setPagoModal(r)}
-                          disabled={cancelada}
-                          className="p-2 text-outline hover:text-tertiary hover:bg-tertiary/10 rounded-lg transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-outline"
-                          title={cancelada ? 'La reserva está cancelada' : 'Registrar pago / ver pagos'}
+                          className="p-2 text-outline hover:text-tertiary hover:bg-tertiary/10 rounded-lg transition-colors"
+                          title={cancelada ? 'Ver / eliminar pagos (reserva cancelada)' : 'Registrar pago / ver pagos'}
                         >
                           <span className="material-symbols-outlined text-[20px]">payments</span>
                         </button>

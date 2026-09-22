@@ -290,6 +290,9 @@ def cancelar_reserva(
 ):
     """Cancelación (baja lógica): la reserva queda CANCELADO y libera las fechas.
 
+    Si el body incluye anular_pagos=true (reserva cargada por error), se
+    eliminan todos sus pagos y cargos para que no figuren en Finanzas.
+
     Si el body incluye devolucion_monto, se registra además un movimiento
     EGRESO "Devolución" (fecha de hoy, departamento de la reserva), para que
     el flujo de caja refleje la plata devuelta al cliente.
@@ -300,6 +303,11 @@ def cancelar_reserva(
             status_code=status.HTTP_409_CONFLICT, detail="La reserva ya está cancelada"
         )
     reserva.estado = EstadoReserva.CANCELADO
+
+    if payload is not None and payload.anular_pagos:
+        # Error de carga: la plata nunca entró, se borra la cuenta corriente.
+        for pago in list(reserva.pagos):
+            db.delete(pago)
 
     if payload is not None and payload.devolucion_monto is not None:
         db.add(
