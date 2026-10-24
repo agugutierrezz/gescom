@@ -45,7 +45,7 @@ jobs:
         run: |
           IP=$(curl -fsS https://api.ipify.org)
           az postgres flexible-server firewall-rule create \
-            --resource-group "$RG" --name "$PG_SERVER" --rule-name "$RULE" \
+            --resource-group "$RG" --server-name "$PG_SERVER" --name "$RULE" \
             --start-ip-address "$IP" --end-ip-address "$IP" --only-show-errors -o none
 
       - name: pg_dump
@@ -75,5 +75,5 @@ jobs:
         if: always()
         run: |
           az postgres flexible-server firewall-rule delete \
-            --resource-group "$RG" --name "$PG_SERVER" --rule-name "$RULE" \
+            --resource-group "$RG" --server-name "$PG_SERVER" --name "$RULE" \
             --yes --only-show-errors || true
