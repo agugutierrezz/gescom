@@ -1,0 +1,79 @@
+# Backup semanal de la base de producción (pg_dump en .sql plano).
+# Se guarda en Azure Blob Storage (contenedor "backups") y además como
+# artifact del workflow (descargable desde GitHub durante 90 días).
+# Los backups automáticos de Azure (restauración a cualquier punto de los
+# últimos 35 días) siguen funcionando aparte; este dump sobrevive aunque se
+# borre el servidor. Configuración: ver DEPLOY-AZURE.md.
+name: Backup semanal DB
+
+on:
+  schedule:
+    - cron: "0 6 * * 0" # domingos 06:00 UTC = 03:00 en Argentina
+  workflow_dispatch: # también se puede correr a mano desde la pestaña Actions
+
+concurrency:
+  group: backup-db
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    env:
+      RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+      PG_SERVER: ${{ vars.AZURE_PG_SERVER }}
+      STORAGE: ${{ vars.AZURE_BACKUP_STORAGE }}
+      RULE: gha-backup-${{ github.run_id }}
+    steps:
+      - name: Login a Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Cliente de PostgreSQL 16
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+          /usr/lib/postgresql/16/bin/pg_dump --version
+
+      - name: Abrir el firewall de la DB solo para este runner
+        run: |
+          IP=$(curl -fsS https://api.ipify.org)
+          az postgres flexible-server firewall-rule create \
+            --resource-group "$RG" --name "$PG_SERVER" --rule-name "$RULE" \
+            --start-ip-address "$IP" --end-ip-address "$IP" --only-show-errors -o none
+
+      - name: pg_dump
+        env:
+          DB_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          FILE="gescom_$(TZ=America/Argentina/Buenos_Aires date +%Y-%m-%d_%H%M).sql"
+          /usr/lib/postgresql/16/bin/pg_dump "$DB_URL" \
+            --no-owner --no-privileges --clean --if-exists --file "$FILE"
+          test -s "$FILE"
+          ls -lh "$FILE"
+          echo "FILE=$FILE" >> "$GITHUB_ENV"
+
+      - name: Subir a Blob Storage
+        run: |
+          az storage blob upload \
+            --account-name "$STORAGE" --container-name backups \
+            --name "$FILE" --file "$FILE" --auth-mode key --only-show-errors -o none
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILE }}
+          path: ${{ env.FILE }}
+          retention-days: 90
+
+      - name: Cerrar el firewall
+        if: always()
+        run: |
+          az postgres flexible-server firewall-rule delete \
+            --resource-group "$RG" --name "$PG_SERVER" --rule-name "$RULE" \
+            --yes --only-show-errors || true

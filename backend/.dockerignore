@@ -1,0 +1,11 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+tests/
+Dockerfile
+.dockerignore
+# Logos de complejos: en producción van por BRANDING_COMPLEJOS (logo_base64)
+app/assets/complejos/
