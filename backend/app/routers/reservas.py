@@ -25,7 +25,9 @@ from app.services.cuenta_corriente import (
     DOS_DECIMALES,
     EPS,
     descuento_usd,
+    saldo_ars,
     saldo_usd,
+    total_neto_ars,
     total_neto_usd,
     total_pagado_usd,
 )
@@ -128,13 +130,18 @@ def _validar_descuento(payload, monto_usd: Decimal) -> None:
 def _a_out(reserva: Reserva) -> ReservaOut:
     out = ReservaOut.model_validate(reserva)
     out.departamento_nombre = reserva.departamento.nombre if reserva.departamento else None
-    tc = Decimal(reserva.tipo_cambio)
     out.descuento_usd = descuento_usd(reserva)
     out.total_usd = total_neto_usd(reserva)
-    out.total_pesos = (out.total_usd * tc).quantize(DOS_DECIMALES, rounding=ROUND_HALF_UP)
     out.total_pagado_usd = total_pagado_usd(reserva)
     out.saldo_usd = max(Decimal("0"), saldo_usd(reserva))
-    out.saldo_pesos = (out.saldo_usd * tc).quantize(DOS_DECIMALES, rounding=ROUND_HALF_UP)
+    # Los equivalentes en pesos se calculan directo en ARS (no total_usd × TC):
+    # una reserva cargada en $ 360.000 debe mostrar $ 360.000 y no el resultado
+    # de redondear a USD 234,53 y volver a multiplicar por la cotización.
+    out.total_pesos = total_neto_ars(reserva)
+    saldada = out.saldo_usd <= EPS
+    out.saldo_pesos = Decimal("0.00") if saldada else max(Decimal("0"), saldo_ars(reserva)).quantize(
+        DOS_DECIMALES, rounding=ROUND_HALF_UP
+    )
     return out
 
 

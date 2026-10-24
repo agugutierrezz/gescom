@@ -101,6 +101,23 @@ def test_sena_en_ars_convierte(client, op_headers):
     assert Decimal(r["saldo_usd"]) == Decimal("400.00")
 
 
+def test_reserva_en_ars_muestra_pesos_exactos_en_listado(client, op_headers):
+    # Caso real: $ 360.000 con TC 1535 -> USD 234,53. El listado mostraba
+    # $ 360.003,55 (234,53 × 1535); debe mostrar el monto cargado.
+    d = crear_departamento(client, op_headers)
+    r = crear_reserva(
+        client, op_headers, d["id"], monto="360000", moneda="ARS", tipo_cambio="1535",
+        sena="180000", sena_moneda="ARS",
+    )
+    assert Decimal(r["monto_usd"]) == Decimal("234.53")
+    assert Decimal(r["total_pesos"]) == Decimal("360000.00")
+    assert Decimal(r["saldo_pesos"]) == Decimal("180000.00")
+    listado = client.get("/reservas", headers=op_headers).json()
+    fila = next(x for x in listado if x["id"] == r["id"])
+    assert Decimal(fila["total_pesos"]) == Decimal("360000.00")
+    assert Decimal(fila["saldo_pesos"]) == Decimal("180000.00")
+
+
 def test_sena_total_estado_pagado(client, op_headers):
     d = crear_departamento(client, op_headers)
     r = crear_reserva(client, op_headers, d["id"], monto="500", sena="500", sena_moneda="USD")
