@@ -1,7 +1,7 @@
 # CI/CD de GESCOM
 #  - En cada push y PR a main: tests del backend (pytest) y build del frontend.
 #  - En cada push a main (si los tests pasan): imagen del backend a GHCR,
-#    deploy a Azure Container Apps y deploy del frontend a Azure Static Web Apps.
+#    deploy a Azure Container Apps y deploy del frontend como sitio estático en Azure Storage.
 # Configuración (secrets y variables del repo): ver DEPLOY-AZURE.md.
 name: CI/CD
 
@@ -148,21 +148,41 @@ jobs:
           exit 1
 
   deploy-frontend:
-    name: Deploy frontend (Static Web Apps)
+    name: Deploy frontend (Azure Storage, sitio estático)
     # Después del backend: el frontend nuevo nunca llega antes que la API que usa.
     needs: [deploy-backend]
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.VITE_API_URL != ''
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.VITE_API_URL != '' && vars.AZURE_WEB_STORAGE != ''
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: frontend-dist
           path: dist
-      - name: Subir a Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+      - name: Login a Azure
+        uses: azure/login@v2
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          action: upload
-          app_location: dist
-          skip_app_build: true
-          skip_api_build: true
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Subir al contenedor $web
+        env:
+          WEB: ${{ vars.AZURE_WEB_STORAGE }}
+        run: |
+          # 1) Assets con hash en el nombre: cache largo (nunca cambian).
+          if [ -d dist/assets ]; then
+            az storage blob upload-batch --account-name "$WEB" --auth-mode key \
+              --destination '$web' --destination-path assets --source dist/assets --overwrite \
+              --content-cache-control "public, max-age=31536000, immutable" --only-show-errors -o none
+          fi
+          # 2) Archivos de la raíz (index.html, íconos) al final y sin cache:
+          #    el index nuevo se publica cuando sus assets ya están arriba.
+          for f in dist/*; do
+            [ -f "$f" ] || continue
+            az storage blob upload --account-name "$WEB" --auth-mode key \
+              --container-name '$web' --name "$(basename "$f")" --file "$f" --overwrite \
+              --content-cache-control "no-cache" --only-show-errors -o none
+          done
+          echo "Frontend publicado en $(az storage account show -n "$WEB" --query primaryEndpoints.web -o tsv)"
